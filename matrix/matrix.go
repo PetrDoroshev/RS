@@ -1,60 +1,144 @@
 package matrix
 
 import (
-	"strings"
 	"fmt"
+	"strings"
 )
 
-type Matrix struct {
-	Data [][]float32
+type Numeric interface {
+	int | int8 | int16 | int32 | int64 |
+		uint | uint8 | uint16 | uint32 | uint64 |
+		float32 | float64
+}
+
+type Matrix[T Numeric] struct {
+	data [][]T
 	Rows int
 	Cols int
 }
 
-type CoordianteList struct {
-	Values []float32
+func (m Matrix[T]) String() string {
+
+	var sb strings.Builder
+
+	for i := 0; i < len(m.data); i++ {
+
+		sb.WriteString("  [")
+
+		for j := 0; j < len(m.data[0]); j++ {
+			fmt.Fprintf(&sb, "%5v", m.data[i][j])
+		}
+		sb.WriteString(" ]\n")
+	}
+	return sb.String()
+}
+
+type CoordinateList[T Numeric] struct {
+	Values []T
 	Row    []int
 	Col    []int
 }
 
-type CSR struct {
-	Values    []float32
+func (m CoordinateList[T]) String() string {
+
+	var sb strings.Builder
+	sb.WriteString("CoordinateList (COO format):\n\n")
+	for i := range m.Values {
+		fmt.Fprintf(&sb, "(%d, %d) -> %v\n", m.Row[i], m.Col[i], m.Values[i])
+	}
+	return sb.String()
+}
+
+type CSR[T Numeric] struct {
+	Values    []T
 	Col       []int
 	Row_index []int
 }
 
-type ELLPACK struct {
-	Value [][]float32
-	Index [][]int
-}
-
-func (m *Matrix) String() string {
+func (m CSR[T]) String() string {
 
 	var sb strings.Builder
 
-	for _, row := range m.Data {
-		for _, item := range row {
-
-			sb.WriteString(fmt.Sprintf("%4.4f", item))
-		}
-		
-		sb.WriteString("\n")
-	}
+	sb.WriteString("CSR (Compressed Sparse Row) format:\n\n")
+	fmt.Fprintf(&sb, "Values:    %v\n", m.Values)
+	fmt.Fprintf(&sb, "Columns:   %v\n", m.Col)
+	fmt.Fprintf(&sb, "Row_index: %v\n", m.Row_index)
 
 	return sb.String()
 }
 
-func NewMatrix(data [][]float32) *Matrix {
-
-	return &Matrix {Data: data, Rows: len(data), Cols: len(data[0])}
+type ELLPACK[T Numeric] struct {
+	Value Matrix[T]
+	Index Matrix[uint]
 }
 
+func (e ELLPACK[T]) String() string {
 
-func (m *Matrix) ToCoordinates() CoordianteList {
+	var sb strings.Builder
 
-	cl := CoordianteList{}
+	sb.WriteString("ELLPACK (ELL) format:\n\n")
 
-	for i, row := range m.Data {
+	sb.WriteString("Values:\n")
+	sb.WriteString(e.Value.String())
+	sb.WriteString("\nIndices:\n")
+	sb.WriteString(e.Index.String())
+
+	return sb.String()
+}
+
+func NewMatrix[T Numeric](data [][]T) *Matrix[T] {
+
+	return &Matrix[T]{data: data,
+		Rows: len(data),
+		Cols: len(data[0])}
+}
+
+func NewZeroMatrix[T Numeric](row_n int, col_n int) *Matrix[T] {
+
+	data := make([][]T, row_n)
+
+	for i := range row_n {
+		data[i] = make([]T, col_n)
+	}
+
+	return &Matrix[T]{data: data, Rows: row_n, Cols: col_n}
+}
+
+func (m *Matrix[T]) Get(row_n int, col_n int) T {
+
+	return m.data[row_n][col_n]
+}
+
+func (m *Matrix[T]) Set(row_n int, col_n int, val T) {
+
+	m.data[row_n][col_n] = val
+}
+
+func (m *Matrix[T]) GetRow(row_n int) []T {
+	return m.data[row_n]
+}
+
+func (m *Matrix[T]) DeleteRow(row_n int) {
+
+	m.data = append(m.data[:row_n], m.data[row_n+1:]...)
+	m.Rows--
+
+}
+
+func (m *Matrix[T]) DeleteColumn(col_n int) {
+
+	for i := range m.Rows {
+
+		m.data[i] = append(m.data[i][:col_n], m.data[i][col_n+1:]...)
+	}
+	m.Cols--
+}
+
+func (m *Matrix[T]) ToCoordinates() CoordinateList[T] {
+
+	cl := CoordinateList[T]{}
+
+	for i, row := range m.data {
 		for k, item := range row {
 
 			if item != 0 {
@@ -70,11 +154,11 @@ func (m *Matrix) ToCoordinates() CoordianteList {
 	return cl
 }
 
-func (m *Matrix) ToCSR() CSR {
+func (m *Matrix[T]) ToCSR() CSR[T] {
 
-	csr := CSR{}
+	csr := CSR[T]{}
 
-	for _, row := range m.Data {
+	for _, row := range m.data {
 
 		csr.Row_index = append(csr.Row_index, len(csr.Values))
 
@@ -86,16 +170,17 @@ func (m *Matrix) ToCSR() CSR {
 			}
 		}
 	}
+	csr.Row_index = append(csr.Row_index, len(csr.Values))
 
 	return csr
 }
 
-func (m *Matrix) ToELLPACK() ELLPACK {
+func (m *Matrix[T]) ToELLPACK() ELLPACK[T] {
 
-	ellpack := ELLPACK{}
+	ellpack := ELLPACK[T]{}
 	max_row_len := 0
 
-	for _, row := range m.Data {
+	for _, row := range m.data {
 
 		row_len := 0
 
@@ -111,24 +196,24 @@ func (m *Matrix) ToELLPACK() ELLPACK {
 		}
 	}
 
-	ellpack.Value = make([][]float32, len(m.Data))
-	ellpack.Index = make([][]int, len(m.Data))
+	ellpack.Value.data = make([][]T, len(m.data))
+	ellpack.Index.data = make([][]uint, len(m.data))
 
-	for i := 0; i < len(m.Data); i++ {
+	for i := 0; i < len(m.data); i++ {
 
-		ellpack.Value[i] = make([]float32, max_row_len)
-		ellpack.Index[i] = make([]int, max_row_len)
+		ellpack.Value.data[i] = make([]T, max_row_len)
+		ellpack.Index.data[i] = make([]uint, max_row_len)
 	}
 
-	for i, row := range m.Data {
+	for i, row := range m.data {
 
 		new_index := 0
 		for k, item := range row {
 
 			if item > 0 {
 
-				ellpack.Value[i][new_index] = item 
-				ellpack.Index[i][new_index] = k
+				ellpack.Value.data[i][new_index] = item
+				ellpack.Index.data[i][new_index] = uint(k)
 				new_index++
 			}
 		}

@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-func printMatrix(matrix [][]int) {
+func printPreferenceMatrix(matrix [][]int) {
 
 	fmt.Print("\t")
 	for i := range len(matrix[0]) {
@@ -151,7 +151,7 @@ func main() {
 	matrix := readMatrixFromFile(*matrix_filename_ptr)
 
 	fmt.Println("Матрица предпочтений:")
-	printMatrix(matrix)
+	printPreferenceMatrix(matrix)
 
 	item_1, item_2, dist := getClosestItems(matrix)
 	fmt.Printf("\nБлижайшие продукты: P%d, P%d, Расстояние: %f\n", item_1+1, item_2+1, dist)
